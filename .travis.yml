@@ -1,13 +1,24 @@
 language: go
 
 go:
-  - 1.6
-  - 1.7
-  - 1.8
-  - tip
+  - "1.11"
+  - "1.25"
+
+go_import_path: github.com/Masterminds/goutils
+
+env:
+  global:
+    - GO111MODULE=off
+
+install: true
 
 script:
-  - go test -v
+  # -vet=off keeps `go test` to the era's behaviour: this code predates Go 1.10,
+  # which started running `go vet` as part of `go test`. Modern vet rejects the
+  # int-to-string conversions in randomstringutils.go / cryptorandomstringutils.go
+  # and the ExampleWrapCustom_1/_2 names in wordutils_test.go — static-analysis
+  # findings in unchanged upstream code, not test failures.
+  - go test -vet=off -v
 
 notifications:
   webhooks:

@@ -1,0 +1,63 @@
+name: build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Create module zip
+        run: |
+          set -eo pipefail
+          # The module zip is packed straight from the tree, so the build
+          # workflow this repo never shipped upstream must not land inside it.
+          rm -rf "$GITHUB_WORKSPACE/src/.github"
+          mkdir -p /tmp/packer /tmp/build_output
+          cd /tmp/packer
+          cat > create_mod.go <<'GOEOF'
+          package main
+
+          import (
+              "log"
+              "os"
+
+              "golang.org/x/mod/module"
+              "golang.org/x/mod/zip"
+          )
+
+          func main() {
+              if len(os.Args) != 5 {
+                  log.Fatal("usage: create_mod <module-path> <version> <source-dir> <output-zip>")
+              }
+              m := module.Version{Path: os.Args[1], Version: os.Args[2]}
+              f, err := os.Create(os.Args[4])
+              if err != nil {
+                  log.Fatal(err)
+              }
+              defer f.Close()
+              if err := zip.CreateFromDir(f, m, os.Args[3]); err != nil {
+                  log.Fatal(err)
+              }
+              log.Printf("created module zip: %s", os.Args[4])
+          }
+          GOEOF
+          go mod init example.com/packer
+          GOFLAGS=-mod=mod go get golang.org/x/mod@v0.17.0
+          go run ./create_mod.go github.com/Masterminds/goutils v1.1.0 "$GITHUB_WORKSPACE/src" /tmp/build_output/v1.1.0.zip
+          unzip -l /tmp/build_output/v1.1.0.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module-zip
+          path: /tmp/build_output/v1.1.0.zip
+          if-no-files-found: error
